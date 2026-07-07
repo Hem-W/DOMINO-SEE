@@ -103,7 +103,62 @@ Practical notes:
   including *all* sided coordinates; `is_intralayer()` — predicate used e.g. for
   symmetric-network optimizations (compute upper triangle only).
 
-### 2.4 Alternatives considered
+### 2.4 Three-layer separation: kernels / engine / orchestration
+
+ES and ECA are two instances of the same computational pattern — "for every
+pair of nodes, run a numerical kernel and produce a matrix block". The package
+separates that pattern into three layers so it is implemented exactly once:
+
+1. **Kernels** (`dominosee/_kernels.py`): pure numpy/numba functions, no xarray.
+   Left-side arrays arrive as ``(n_i, ...)``, right-side as ``(n_j, ...)``, and
+   the result is an ``(n_i, n_j)`` matrix whose ``[i, j]`` entry refers to the
+   directed pair ``i -> j``. Kernels are testable against brute-force
+   references in isolation (`tests/test_kernels.py`).
+2. **Engine** (`dominosee/engine.py`): :func:`pairwise_apply` is the only place
+   that implements node-format validation, ``node_i``/``node_j`` pairing (with
+   layer propagation), ``apply_ufunc`` assembly, and count-dtype inference.
+   The Phase 3 chunk-pair-to-zarr execution path and the symmetric
+   (upper-triangle) optimization will land here and nowhere else.
+3. **Orchestration** (`dominosee/es.py`, `dominosee/eca.py`): thin wrappers —
+   one kernel + one engine call + metadata. A new coupling measure
+   (correlation, mutual information, unsymmetric ES) is just a new kernel.
+
+### 2.5 Pipeline-stage data contracts
+
+The intermediate products of the pipeline have documented shapes, enforced by
+lightweight validators in `dominosee/conventions.py` so errors surface at
+function boundaries instead of deep inside kernels:
+
+| Stage | Shape | Validator |
+|---|---|---|
+| EventSeries | ``(node, time)`` bool, ``layer`` scalar coord | ``require_event_series`` |
+| EventPositions | ``(node, event)`` int + ``event_count (node)`` | ``require_node_format`` |
+| PairwiseCounts | ``(node_i, node_j)`` uint | ``require_pairwise`` |
+| LinkMatrix | ``(node_i, node_j)`` bool, ``directed`` attr | ``require_pairwise`` |
+
+Every pipeline function appends a CF-style ``history`` attribute entry
+(``record_provenance``) with its parameters as JSON, so results are
+self-describing.
+
+### 2.6 User-facing API direction
+
+The stable core API is functional (the ``get_*`` functions). A thin xarray
+accessor (``.dsee``) is planned as discoverable, chainable sugar over it —
+the idiomatic pattern of the xarray ecosystem (rioxarray's ``.rio``,
+cf-xarray's ``.cf``):
+
+```python
+events = spi.dsee.eventorize(threshold=-1, extreme="below", layer="drought")
+net = events.dsee.event_sync(tau_max=10).dsee.threshold(null_model=nm)
+```
+
+A pyunicorn-style ``ClimateNetwork`` wrapper class was considered and
+rejected: it would re-implement selection, serialization, and dask handling
+that xarray objects already provide. Statistical inference (null models,
+binomial confidence — currently inside `es.py`/`eca.py`) will move to a
+dedicated ``stats`` module so module boundaries match pipeline stages.
+
+### 2.7 Alternatives considered
 
 | Alternative | Why not chosen |
 |---|---|
@@ -175,37 +230,42 @@ pipeline.
 
 ## 4. Roadmap
 
-### Phase 1 — Core refactor: adopt the conventions (foundation for everything else)
+### Phase 1 — Core refactor: adopt the conventions (done)
 
-Files: new `dominosee/conventions.py`; edits to `eca.py`, `es.py`, `eventorize.py`,
-`utils/dims.py`, `__init__.py`, `pyproject.toml`.
+Implemented: `dominosee/conventions.py` (constants, `to_node_format` /
+`from_node_format`, `as_pair` / `from_pair`, `transpose_network`,
+`is_intralayer`, contract validators, `record_provenance`);
+`dominosee/_kernels.py` and `dominosee/engine.py` (three-layer separation,
+§2.4); `es.py`/`eca.py` thinned onto the engine; dead/legacy code removed;
+`layer` provenance chain from `get_event` onward; PEP 440 version,
+single-sourced; dependencies pruned.
 
-- `conventions.py`: dimension-name constants; `to_node_format` / `from_node_format`
-  (replace `stack_lonlat`, no MultiIndex); one pair-dimension utility replacing the
-  three renaming implementations (Finding A); `transpose_network`, `is_intralayer`.
-- Delete dead/legacy code (`eca.py:462-523`, commented blocks, obsolete
-  `eventorize` remnants).
-- Fix core-dim selection (Finding B): operate on the canonical `node` dim, error
-  early on un-normalized input instead of silently going 4-D.
-- Replace `attrs`-based validation with explicit parameters (Finding E).
-- `get_event` writes the `layer` scalar coordinate; ECA/ES propagate
-  `layer_i`/`layer_j`.
-- Fix version (PEP 440, single source) and prune dependencies (Finding H).
+Correctness fixes that came out of the kernel extraction (all covered by
+brute-force tests in `tests/test_kernels.py`):
 
-*Acceptance*: all pipeline functions accept/produce `node`-format arrays with
-`node_i`/`node_j` outputs; results serialize to netCDF and zarr without
-`reset_index` workarounds; no function parses dimension names.
+- The njit ECA **precursor matrix was transposed**: the kernel filled
+  ``(n_B, n_A)`` while the output was labeled ``(A, B)`` — silently wrong for
+  square (same node set) networks, a hard error otherwise.
+- The njit ECA **trigger window was built from the wrong side**: windows were
+  taken from event series A, while the legacy (paper-validated) definition and
+  the binomial confidence formula (``n = N_A``) both require the backward
+  window of series B. `get_eca_trigger_from_events` now windows `eventB`.
+- The ES kernel's treatment of each series' **last event depended on NaN
+  comparison quirks**, making ES(A, B) != ES(B, A) for identical inputs. The
+  kernel now excludes first and last events explicitly (interior events only),
+  the standard ES definition.
 
 ### Phase 2 — Tests and CI
 
 Files: `tests/test_eca.py`, `tests/test_es.py`, `tests/test_network.py`, new
 `.github/workflows/test.yml`; rewrite `docs/source/user_guide/*`.
 
-- Brute-force reference tests for the ECA/ES kernels (small numpy cases computed
-  the naive way), ES symmetry and ECA directionality (i→j orientation) tests,
-  dask-vs-numpy equivalence tests.
+- Extend the brute-force kernel references from Phase 1 with dask-vs-numpy
+  equivalence tests and broader parameter coverage.
 - CI matrix across supported Python versions; coverage report.
 - Rewrite the user guide to match the real API (Finding G).
+- Split statistical inference (null models, binomial confidence) into a
+  dedicated `stats` module (§2.6).
 
 *Acceptance*: core kernels covered by reference tests; CI green on the matrix; no
 documented-but-nonexistent API remains.
@@ -229,6 +289,8 @@ Files: new `dominosee/backends/` (or extension of `conventions.py`); retire
   attributes `lat`/`lon` (and `layer` for supra-adjacency input).
 - Native xarray implementations for cheap metrics (degree/strength, density) so the
   common cases never need the dense→NetworkX round trip.
+- Introduce the `.dsee` xarray accessor as chainable sugar over the functional
+  API (§2.6).
 
 *Acceptance*: round-trip node identity preserved; degrees from xarray and NetworkX
 agree on test networks.

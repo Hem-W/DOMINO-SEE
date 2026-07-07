@@ -3,6 +3,8 @@ from itertools import groupby
 import numpy as np
 import xarray as xr
 
+from .conventions import LAYER, record_provenance
+
 __all__ = [
     'get_event',
     'get_event_percentile',
@@ -10,7 +12,7 @@ __all__ = [
 
 """
 Event selection
-# TODO: 事件选择当中很多任务已经在xclim中实现
+# TODO: much of the event selection below is already implemented in xclim
 """
 def _select_burst(te):
     tb = te.copy()  # time of bursts
@@ -233,6 +235,7 @@ def get_event(da: xr.DataArray, threshold: float, extreme: str,
         kwargs={"th": threshold, "extreme": extreme, "select": select, "select_period": select_period}
     ).rename(event_name)
 
+    da = da.assign_coords({LAYER: event_name})
     da.attrs = {
         "threshold": threshold,
         "extreme": extreme,
@@ -242,6 +245,9 @@ def get_event(da: xr.DataArray, threshold: float, extreme: str,
         "select": select,
         "select_period": select_period
     }
+    record_provenance(da, "get_event", {"threshold": threshold, "extreme": extreme,
+                                        "event_name": event_name, "select": select,
+                                        "select_period": select_period})
     return da
 
 
@@ -285,6 +291,7 @@ def get_event_percentile(da: xr.DataArray, percentile: float, extreme: str="abov
         kwargs={"q": percentile, "extreme": extreme, "select": select, "select_period": select_period}
     ).rename(event_name)
 
+    da = da.assign_coords({LAYER: event_name})
     da.attrs = {
         "percentile": percentile,
         "extreme": extreme,
@@ -294,58 +301,7 @@ def get_event_percentile(da: xr.DataArray, percentile: float, extreme: str="abov
         "select": select,
         "select_period": select_period
     }
+    record_provenance(da, "get_event_percentile", {"percentile": percentile, "extreme": extreme,
+                                                   "event_name": event_name, "select": select,
+                                                   "select_period": select_period})
     return da
-
-
-# """
-# Event layer processor
-# """
-# def merge_layers(da_list: list) -> xr.Dataset:
-#     ds = xr.merge(da_list, combine_attrs="drop_conflicts")
-#     return ds
-
-# def events_to_layer(da_list: Union[xr.DataArray, List]) -> xr.Dataset:
-#     if isinstance(da_list, xr.DataArray):
-#         ds = da_list.to_dataset()
-#     elif isinstance(da_list, (list, tuple)):
-#         ds = merge_layers(da_list)
-#     else:
-#         raise ValueError("da_list should be one or a list of xarray.DataArray of events")
-#     return ds
-
-
-# """
-# Calculate properties
-# """
-# def durations(te):
-#     du_num = np.concatenate([[len(list(j)) for i, j in groupby(x) if i] for x in te]).astype('uint16')
-#     due = np.zeros_like(te, dtype='uint16')
-#     due[te] = np.repeat(du_num, du_num)
-#     return due
-
-
-# """
-# The following are the obsolette versions lack of flexibility
-# """
-# def drought_time(ts, th, burst=False):  # events
-#     te = ts <= th  # time of events
-#     if burst:
-#         tb = te.copy()  # time of bursts
-#         tb0 = np.roll(tb, 1)
-#         tb0[:, 0] = False
-#         tb[tb & tb0] = False
-#         return te, tb
-#     else:
-#         return te
-
-
-# def flood_time(ts, th, burst=False):
-#     te = ts >= th
-#     if burst:
-#         tb = te.copy()  # time of bursts
-#         tb0 = np.roll(tb, 1)
-#         tb0[:, 0] = False
-#         tb[tb & tb0] = False
-#         return te, tb
-#     else:
-#         return te

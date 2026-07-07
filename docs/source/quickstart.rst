@@ -12,7 +12,7 @@ First, import the necessary packages:
 
     import numpy as np
     import xarray as xr
-    import dominosee as ds
+    import dominosee as dsee
 
 Creating Sample Data
 --------------------
@@ -46,14 +46,30 @@ Identify extreme events using a threshold:
 .. code-block:: python
 
     from dominosee.eventorize import get_event
-    
+
     # Extract drought events (SPI < -1.0)
     da_event = get_event(
-        spi.SPI1, 
-        threshold=-1.0, 
-        extreme="below", 
+        spi.SPI1,
+        threshold=-1.0,
+        extreme="below",
         event_name="drought"
     )
+
+The ``event_name`` becomes the event's **layer** — it is recorded as a scalar
+``layer`` coordinate and propagates through the whole pipeline.
+
+Flattening Space Into Nodes
+---------------------------
+
+DOMINO-SEE networks relate pairs of spatial points, called **nodes**. Flatten
+the ``lat``/``lon`` grid into the canonical integer ``node`` dimension first —
+``lat`` and ``lon`` become auxiliary coordinates riding on ``node``, so the
+result still serializes to netCDF/zarr:
+
+.. code-block:: python
+
+    da_event = dsee.to_node_format(da_event)
+    # dims: (node, time); coords: node, lat(node), lon(node), layer
 
 Event Coincidence Analysis (ECA)
 ---------------------------------
@@ -94,10 +110,15 @@ Calculate event coincidences between location pairs:
     )
     
     da_trig_conf = get_eca_trigger_confidence(
-        trigger=da_trigger, 
-        eventA=da_event, 
+        trigger=da_trigger,
+        eventA=da_event,
         eventB=da_event
     )
+
+All pairwise results have the fixed dimensions ``(node_i, node_j)`` with the
+sided coordinates ``lat_i``/``lon_i``/``layer_i`` (and the ``_j``
+counterparts). ECA networks are directed: entry ``[i, j]`` refers to the pair
+``node_i -> node_j``.
 
 Constructing Networks
 ---------------------
@@ -107,13 +128,13 @@ Create network adjacency matrices from significant connections:
 .. code-block:: python
 
     from dominosee.network import get_link_from_confidence
-    
+
     # Create network from ECA confidence levels
     da_link = (
-        get_link_from_confidence(da_prec_conf, 0.99) & 
+        get_link_from_confidence(da_prec_conf, 0.99) &
         get_link_from_confidence(da_trig_conf, 0.99)
     )
-    
+
     # Calculate network density
     density = da_link.sum().values / da_link.size * 100
     print(f"Network density: {density:.2f}%")

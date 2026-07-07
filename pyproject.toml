@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dominosee"
-version = "0.0.1-alpha"
+version = "0.0.1a0"
 description = "A tool for spatial climate network analysis"
 readme = "README.md"
 authors = [
@@ -29,9 +29,6 @@ dependencies = [
     "scipy",
     "numba>=0.55.0",
     "netCDF4",
-    "cf-xarray",
-    "bottleneck",
-    "ipykernel",
     "tqdm",
 ]
 
@@ -43,6 +40,8 @@ dev = [
     "isort",
     "matplotlib",
     "cartopy",
+    "ipykernel",
+    "zarr",
 ]
 docs = [
     "sphinx>=6.0.0",

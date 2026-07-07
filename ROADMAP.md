@@ -17,26 +17,34 @@ they belong to.
 - [x] Create contribution guidelines
 - [x] Add examples directory with sample scripts
 
-## Phase 1 — Core refactor: adopt the conventions
+## Phase 1 — Core refactor: adopt the conventions (done)
 
-- [ ] Add `dominosee/conventions.py`: dimension-name constants,
+- [x] Add `dominosee/conventions.py`: dimension-name constants,
       `to_node_format`/`from_node_format` (replaces `stack_lonlat`, no MultiIndex),
       one pair-dimension utility (replaces the three renaming implementations),
-      `transpose_network`, `is_intralayer`
-- [ ] Delete dead/legacy code (`eca.py` legacy confidence functions and commented blocks)
-- [ ] Fix fragile spatial-core-dimension selection in `eca.py`/`es.py`
-- [ ] Replace `attrs`-based input validation with explicit parameters
-- [ ] Write `layer` as a scalar coordinate in `get_event`; propagate `layer_i`/`layer_j`
+      `transpose_network`, `is_intralayer`, contract validators, provenance
+- [x] Three-layer separation: pure kernels (`_kernels.py`) + pairwise engine
+      (`engine.pairwise_apply`) + thin orchestration in `es.py`/`eca.py`
+- [x] Delete dead/legacy code (`eca.py` legacy confidence functions and commented blocks)
+- [x] Fix fragile spatial-core-dimension selection in `eca.py`/`es.py`
+      (validators now reject un-normalized input early)
+- [x] Replace `attrs`-based input validation with explicit parameters
+- [x] Write `layer` as a scalar coordinate in `get_event`; propagate `layer_i`/`layer_j`
       through ECA/ES outputs
-- [ ] Fix version numbering (PEP 440, single-sourced) and prune dependencies
-- [ ] Support unsymmetric event synchronizations (ES)
+- [x] Fix version numbering (PEP 440, single-sourced) and prune dependencies
+- [x] Correctness fixes found during kernel extraction: transposed njit ECA
+      precursor matrix; trigger window built from the wrong series; NaN-dependent
+      asymmetry in ES last-event handling (see ARCHITECTURE.md Phase 1 notes)
+- [ ] Support unsymmetric event synchronizations (ES) — moved to a separate PR
 
 ## Phase 2 — Tests, CI, and truthful docs
 
-- [ ] Brute-force reference tests for ECA/ES kernels; ES symmetry and ECA
-      directionality tests; dask-vs-numpy equivalence tests
+- [x] Brute-force reference tests for ECA/ES kernels; ES symmetry and ECA
+      directionality tests (delivered early with Phase 1)
+- [ ] Dask-vs-numpy equivalence tests
 - [ ] Add a GitHub Actions test workflow (Python version matrix, coverage)
 - [ ] Rewrite `docs/user_guide` pages that document non-existent APIs
+- [ ] Split statistical inference (null model, confidence) into a `stats` module
 - [ ] Add advanced tests to examine the bugs in various working environments
 
 ## Phase 3 — Large networks: chunk-pair computation + zarr

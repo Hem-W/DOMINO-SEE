@@ -320,7 +320,9 @@ def get_eca_precursor_confidence(
     require_event_series(eventB, name="eventB")
 
     eca_params = _confidence_params(precursor, delt, sym, tau)
-    TOL = eca_params["delt"] * eca_params["sym"] + 1
+    # Number of time steps in the tolerance window (Siegmund et al. 2017, event
+    # time series): delt+1 for a directional window, 2*delt+1 for a symmetric one.
+    TOL = eca_params["delt"] * (1 + eca_params["sym"]) + 1
     tau_val = eca_params["tau"]
     T = eventA.sizes[TIME]
 
@@ -378,7 +380,9 @@ def get_eca_trigger_confidence(
     require_event_series(eventB, name="eventB")
 
     eca_params = _confidence_params(trigger, delt, sym, tau)
-    TOL = eca_params["delt"] * eca_params["sym"] + 1
+    # Number of time steps in the tolerance window (Siegmund et al. 2017, event
+    # time series): delt+1 for a directional window, 2*delt+1 for a symmetric one.
+    TOL = eca_params["delt"] * (1 + eca_params["sym"]) + 1
     tau_val = eca_params["tau"]
     T = eventA.sizes[TIME]
 

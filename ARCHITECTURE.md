@@ -240,20 +240,37 @@ Implemented: `dominosee/conventions.py` (constants, `to_node_format` /
 `layer` provenance chain from `get_event` onward; PEP 440 version,
 single-sourced; dependencies pruned.
 
-Correctness fixes that came out of the kernel extraction (all covered by
-brute-force tests in `tests/test_kernels.py`):
+Correctness fixes that came out of the kernel extraction, all covered by
+brute-force tests in `tests/test_kernels.py` and validated against the CoinCalc
+definitions (Siegmund et al. 2017) in `tests/test_eca_coincalc.py`:
 
 - The njit ECA **precursor matrix was transposed**: the kernel filled
   ``(n_B, n_A)`` while the output was labeled ``(A, B)`` — silently wrong for
   square (same node set) networks, a hard error otherwise.
-- The njit ECA **trigger window was built from the wrong side**: windows were
-  taken from event series A, while the legacy (paper-validated) definition and
-  the binomial confidence formula (``n = N_A``) both require the backward
-  window of series B. `get_eca_trigger_from_events` now windows `eventB`.
+- The njit ECA **trigger window was built from the wrong side**: it was taken
+  from series A (backward), so precursor and trigger measured *different*
+  temporal relations. Per CoinCalc, both rates share one coincidence indicator
+  and differ only in which end is counted; `get_eca_trigger_from_events` now
+  windows `eventB`, and precursor/trigger share the relation as required.
+- The **analytical-test tolerance `TOL` was wrong** (`get_eca_*_confidence`):
+  it read `delt*sym + 1` (= 1 for a directional window, ignoring `delt`;
+  `delt+1` for a symmetric one). The CoinCalc analytical test uses the number
+  of time steps in the tolerance window: `delt+1` (directional) and `2*delt+1`
+  (symmetric), i.e. `delt*(1+sym)+1`. This changes p-values and therefore
+  network density — results from the original code should be recomputed.
 - The ES kernel's treatment of each series' **last event depended on NaN
   comparison quirks**, making ES(A, B) != ES(B, A) for identical inputs. The
   kernel now excludes first and last events explicitly (interior events only),
   the standard ES definition.
+
+**ECA A/B direction convention.** DOMINO-SEE reads a directed pair as "A drives
+B" (A precedes B), the mirror of the paper's "B influences A" wording, so the
+functions map to CoinCalc as: `get_eca_precursor_from_events(A, B)` counts B
+events preceded by an A event (binomial `n = N_B`); `get_eca_trigger_from_events
+(A, B)` counts A events followed by a B event (binomial `n = N_A`). Both use the
+same "A before B" indicator. For an unordered pair `{i, j}` with an asymmetric
+window this yields four distinct numbers — `precursor_ij`, `trigger_ij`,
+`precursor_ji`, `trigger_ji` — which is expected, not a bug.
 
 ### Phase 2 — Tests and CI
 

@@ -35,7 +35,7 @@ process_eca_blockwise(
 )
 
 # Later, load only a specific region
-region = {"locationA": slice(0, 10), "locationB": slice(0, 10)}
+region = {"node_i": slice(0, 10), "node_j": slice(0, 10)}
 result = combine_blocks(
     os.path.join("eca_results", "eca_block_*.nc"),
     region=region
